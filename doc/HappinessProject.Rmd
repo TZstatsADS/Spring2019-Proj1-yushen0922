@@ -1,0 +1,492 @@
+---
+title: "Data Speaks Happiness"
+author: "Yu Shen"
+date: "2/4/2019"
+output:
+  html_document:
+    df_print: paged
+  pdf_document: default
+---
+
+```{r setup, include=FALSE, echo=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r load libraries, warning=FALSE, message=FALSE, echo=FALSE}
+library(ggplot2)
+library(dplyr)
+library(tm)
+library(tidytext)
+library(tidyverse)
+library(DT)
+library(gridExtra)
+library(RColorBrewer)
+library(wordcloud)
+```
+
+```{r read data, warning=FALSE, message=FALSE, echo=FALSE}
+setwd("/Users/apple/Desktop/ADS_project1/Spring2019-Proj1-yushen0922/output")
+processed_data <- read_csv("/Users/apple/Desktop/ADS_project1/Spring2019-Proj1-yushen0922/output/processed_moments.csv")
+head(processed_data)
+names(processed_data)
+```
+
+```{r read demo data, warning=FALSE, message=FALSE, echo=FALSE}
+demogra_data <- read_csv("/Users/apple/Desktop/ADS_project1/Spring2019-Proj1-yushen0922/data/demographic.csv")
+
+head(demogra_data)
+```
+
+```{r uplodaing data, warning=FALSE, message=FALSE, echo=FALSE}
+mydata <- processed_data %>%
+  inner_join(demogra_data, by = "wid") %>%
+  select(wid, 
+         original_hm,
+         cleaned_hm,
+         gender, 
+         marital, 
+         parenthood, 
+         reflection_period, 
+         age, 
+         country, 
+         ground_truth_category, 
+         predicted_category, 
+         text)
+head(mydata)
+```
+
+```{r cleaning data, warning=FALSE, message=FALSE, echo=FALSE}
+#cleaning the data
+mydata <- mydata[-c(which(as.numeric(mydata$age)<5),
+                    which(as.numeric(mydata$age)>150),## remove 
+                    ## some unreasonable age
+                 which(is.na(mydata$age)),
+                 which(is.na(mydata$marital)),
+                 which(is.na(mydata$gender)),
+                 which(is.na(mydata$parenthood)),## remove NA
+                 which(mydata$age=="prefer not to say"),
+                 which(mydata$age=="čá")),]
+
+
+#changing 60yrs to 60
+which(mydata$age=="60yrs")
+mydata$age [c(32911,35862,38809)] <- rep("60", 3)
+#converting age to numeric
+mydata$age <- as.numeric(mydata$age)
+
+#exploring data statistics
+age_stat <- summary(mydata$age)
+young_num <- length(which(mydata$age <= 30))
+old_num <- length(which(mydata$age > 30))
+male_num <- length(which(mydata$gender=="m"))
+female_num <- length(which(mydata$gender=="f"))
+single_num <- length(which(mydata$marital=="single"))
+married_num <- length(which(mydata$marital=="married"))
+divorced_num <- length(which(mydata$marital=="divorced"))
+```
+#Introduction#
+
+**Happiness** has long been the center of concern for humankind. It is one of the most broadly debated concept, yet the most intricate one. From Ancient Greece to Modern Day time, happiness has evolved as a as an existential purpose to include different aspects of modern day life such as a job promotion or purchasing a car. The search for happiness is inevitably an active task commonly shared by people from different geographies, ages, genders, races, etc.
+So, what defines happiness? Is happiness embodied in physical activity or emotional sentiments? Does youth define happiness from certain angles? Do women feel different from men and other genders when it comes to their happy moments? Do the "significant other" and children change one's perspective of joy? 
+
+
+In this context, I will explore what the HappyDB data provides us with: more than 100,000 crowd-sourced happy moments. The average age is 32 years old with the youngest interviewee being 17 years old and the oldest being 98 years old. Around 57% are men and 42% are women. Approximately 54% are single, 41% are married,  roughly 4% are divorced and the remaining 1% are either separated or widowed.
+Below is a sample of the happy moments that the interviewed people described:
+
+
+This sample gives an insight about the different happy moments, which made the data analysts behind HappyDB create categories of happiness: 
+
+1. Achievement
+2. Affection
+3. Bonding
+4. Enjoying the Moment
+5. Exercise
+6. Leisure
+7. Nature
+
+##Data Exploration##
+In all of the provided data , let's look at how these categories of happiness are distributed:
+```{r all categories, warning=FALSE, message=FALSE, echo=FALSE}
+category_freq <- count(mydata, predicted_categories=mydata$predicted_category)
+category_freq$percent <- round((category_freq$n/sum(category_freq$n))*100, 2)
+
+ggplot(category_freq, aes(predicted_categories, percent)) +
+  geom_histogram(stat="identity", color="red", fill="red") +
+  labs(x="categories of happiness", y="frequency (%)", title="The Frequency of the 7 Happiness Categories of Happiness") +
+  scale_y_continuous(limits=c(0,100), breaks = seq(0,100,10)) +
+  geom_text(aes(x=predicted_categories, y=category_freq$percent, label=category_freq$percent,size=1,vjust=-1)) 
+```
+
+From this graph, it looks like people's happiness concentrates significantly around themes of achievement and affection. Enjoying the moment and bonding come 3rd and 4th in rank, respectively. Then, Leisure, nature and exercise come 5th, 6th and 7th in rank. 
+Below are the most frequently used words to describe lived happy moments. The themes surrounding these words are friendship (friend), family (example: daughter, mom), relationships (wife), celebrations (birthday), and career (job).
+
+```{r total wordcloud, warning=FALSE, message=FALSE, echo=FALSE}
+words <-  mydata %>%
+  unnest_tokens(word, text)## unnest the text
+word_count <- words %>%
+  count(word, sort = TRUE)## count the words with rank
+
+##plot a word cloud
+set.seed(0)
+wordcloud(words = word_count$word, freq = word_count$n, min.freq = 1, max.words=100, random.order=FALSE, rot.per=0.3, colors=brewer.pal(12, "Paired"))
+
+```
+
+As shown by their extreme close frequency values in the previous graph, this mix between achieving and affection suggests that we look closer at other information that we have, such as age, gender and relationship status. These variables could tell us different stories about the distribution of these happy moments. Accordingly, I will look further into studying genders, young and old people, marital situations, and parenthood.
+
+##1. Age:##
+```{r Age Distribution, warning=FALSE, message=FALSE, echo=FALSE}
+ggplot(mydata) +
+  geom_bar(aes(x=age, fill=factor(predicted_category))) +
+  labs(title="The Distribution of Age", fill="categories of happiness") +
+  scale_x_discrete(limits = seq(0,100,5)) +
+  scale_y_discrete(limits=seq(0,8000,1000))
+```
+
+From this graph, we can tell that the age of the majority of people is between the early 20s and early 40s. We can also see that nature and leisure are not big sources of happy moments as much as achievement, affection or bonding are.
+With such a distribution, and as part of this study, I decided to define the age categories as the following:
+
+1. Younger than 24 years old: early adult
+2. 25-40 years old: young adults
+3. 41-65 years old: adults
+4. Older than 65 years od: seniors
+
+```{r Age Categories, warning=FALSE, message=FALSE, echo=FALSE}
+#age categories subsets
+early_adult <- mydata [which(mydata$age %in% (17:24)), ] 
+young_adult <- mydata [which(mydata$age %in% (25:40)) , ]
+adult <- mydata [which(mydata$age %in% (41:65)), ] 
+senior <- mydata[which(mydata$age>65),] 
+```
+
+```{r happiness categories based on age, warning=FALSE,message=FALSE, echo=FALSE}
+#Happiness Categories Given a Population in the Early 20s
+freq_early_adult <- count(early_adult, predicted_categories=early_adult$predicted_category)
+
+freq_early_adult$percent <- round((freq_early_adult$n/sum(freq_early_adult$n))*100, 2)
+
+p_early_adult <- ggplot(freq_early_adult, aes(predicted_categories, percent)) +  
+  geom_histogram(stat = "identity", fill="blue", color="blue") +  
+  labs(x="happiness categories", y="frequency (%)", title="Happy Moments of 17-24 year olds") +  
+  scale_y_continuous(limits=c(0,100), breaks = seq(0,100,5)) +  
+  geom_text(aes(x=predicted_categories, y=freq_early_adult$percent, label=freq_early_adult$percent, vjust=-1))
+
+#Happines Categories Given that the Population is a Young Adult (24-40 years old)
+freq_young_adult <- count(young_adult, predicted_categories=young_adult$predicted_category)
+freq_young_adult$percent <- round((freq_young_adult$n/sum(freq_young_adult$n))*100, 2)
+
+p_young_adult <- ggplot(freq_young_adult, aes(predicted_categories, percent)) +  
+  geom_histogram(stat = "identity", fill="pink", color="pink") +  
+  labs(x="happiness categories", y="frequency (%)", title="Happy Moments for 25-40 year olds") +
+  scale_y_continuous(limits=c(0,100), breaks = seq(0,100,5)) +  
+  geom_text(aes(x=predicted_categories, y=freq_young_adult$percent, label=freq_young_adult$percent,vjust=-1)) 
+
+#Happines Categories Given that the Population is Adult (41-65 years old)  
+freq_adult <- count(adult, predicted_categories=adult$predicted_category)
+freq_adult$percent <- round((freq_adult$n/sum(freq_adult$n))*100, 2)
+
+p_adult <- ggplot(freq_adult, aes(predicted_categories, percent)) +  
+  geom_histogram(stat = "identity", fill="green", color="green") +  
+  labs(x="happiness categories", y="frequency (%)", title="Happy Moments for 41-65 year olds") +
+  scale_y_continuous(limits=c(0,100), breaks = seq(0,100,5)) +  
+  geom_text(aes(x=predicted_categories, y=freq_adult$percent, label=freq_adult$percent, vjust=-1)) 
+
+#Happines Categories Given that the Population is Senior (>65 years old)  
+freq_senior <- count(senior, predicted_categories=senior$predicted_category)
+freq_senior$percent <- round((freq_senior$n/sum(freq_senior$n))*100, 2)
+
+p_senior <- ggplot(freq_senior, aes(predicted_categories, percent)) +
+  geom_histogram(stat = "identity", fill="purple", color="purple") +
+  labs(x="happiness categories", y="frequency (%)", title="Happy Moments for Seniors (>65)") +
+  scale_y_continuous(limits=c(0,100), breaks = seq(0,100,5)) + 
+  geom_text(aes(x=predicted_categories, y=freq_senior$percent, label=freq_senior$percent, vjust=-1)) 
+```
+
+So let's see how much of importance does each of the happiness categories have in the lives of our aformentioned age groups:
+```{r age grid, warning=FALSE, message=FALSE, echo=FALSE}
+grid.arrange(p_early_adult,p_young_adult,p_adult,p_senior,ncol=2)
+
+```
+
+Here, we notice a pattern: as people get older, their happiness gets less impacted by accomplishments and short-lived moments (enjoying the moment category). Instead, their happiness gets more influenced by affection moments. Young people seem to find their joy in achievements rather than affection. As for bonding, we see a shift: for instance, for teens and early 20 year olds, bonding represents a significant part of their happiness (13.08%) compared with that for seniors where it represents 8.32%--slightly less than living the moment. In fact, such trends sound intuitive: at a certain time and period of life, older people would have become more settled in their lives with their careers and relationships, thus mostly caring for their emotional needs. On the other hand, the young adults are more focused on their academics, career and living conditions. The following graphs showcase the discrepancy and similarity in the most frequent words used by adults between 24 and 40 years and seniors.
+
+```{r adult achievement bag of words, warning=FALSE, message=FALSE, echo=FALSE}
+#achievement for adults
+achievement_data_adult <- young_adult[which(young_adult$predicted_category=="achievement"),]
+words_achievement_adult <-  achievement_data_adult %>%
+  unnest_tokens(word, text)
+
+word_count_achievement_adult <- words_achievement_adult %>%
+  count(word, sort = TRUE)
+
+p1 <- ggplot(head(word_count_achievement_adult,20), aes(x=reorder(word,n), y=n)) +
+  geom_bar(stat="identity", col="black", fill="light blue") +
+  labs(x="Words", y="Counts", title="Adults 24-40") 
+```
+
+```{r senior achievement bag of words, warning=FALSE, message=FALSE, echo=FALSE}
+#achievement for seniors
+achievement_data_senior <- senior[which(senior$predicted_category=="achievement"),]
+words_achievement_senior <-  achievement_data_senior %>%
+  unnest_tokens(word, text)
+
+word_count_achievement_senior <- words_achievement_senior %>%
+  count(word, sort = TRUE)
+p2 <- ggplot(head(word_count_achievement_senior,20), aes(x=reorder(word,n), y=n)) +
+  geom_bar(stat="identity", col="black", fill="light green") +
+  labs(x="Words", y="Counts", title="Seniors")
+
+grid.arrange(p1,p2, nrow=1,ncol=2)
+```
+
+We can see that the happiness stemming from accomplishment for adults between 24 and 40 years old is related to job, promotion, money and getting tasks done. Seniors have almost the same but also different frequent words; evidently the concerns of the two age groups is different given they're at different life stages. Yet, a common noticeable point is materialism as both age groups tend to mention owning things through using words like: received, purchased, bough, price, money.
+Now, let's look at genders and see if one has a different say from the other as regards moments of happiness.
+
+##2. Gender:##
+In this regard, I will study the two prominent genders in the data: female and male (I will use women and men as labels)
+```{r women, warning=FALSE, message=FALSE, echo=FALSE}
+#what categories are most women happy with
+women_data <- mydata[mydata$gender=="f",]
+freq_women <- count(women_data,predicted_category = women_data$predicted_category)
+freq_women$percent <- round((freq_women$n / sum(freq_women$n))*100,2)## freq and percent
+
+p_women <- ggplot(freq_women, aes(predicted_category, percent)) +
+  geom_histogram(stat = "identity", fill="purple", color="purple") +
+  scale_y_continuous(limits=c(0,100), breaks = seq(0,100,5)) +
+  geom_text(aes(x=predicted_category, y=freq_women$percent, label=freq_women$percent, vjust=-1)) +
+  labs(x="Happiness Categories", y="Frequency (%)", title = "Distribution of Happy Moments of Women")
+```
+
+```{r men, warning=FALSE, message=FALSE, echo=FALSE}
+men_data <- mydata[mydata$gender=="m",]
+freq_men <- count(men_data,predicted_category = men_data$predicted_category)
+freq_men$percent <- round((freq_men$n / sum(freq_men$n))*100,2)
+
+p_men <- ggplot(freq_men, aes(predicted_category, percent)) +
+  geom_histogram(stat = "identity", fill="orange", color="orange") +
+  scale_y_continuous(limits=c(0,100), breaks = seq(0,100,5)) +
+  geom_text(aes(x=predicted_category, y=freq_men$percent, label=freq_men$percent, pos=2, vjust=-1)) +
+  labs(x="Happiness Categories", y="Frequency (%)", title = "Distribution of Happy Moments of Men")
+```
+
+```{r gender grid, warning=FALSE, message=FALSE, echo=FALSE}
+grid.arrange(p_women,p_men,nrow=1,ncol=2)
+```
+
+Interestingly, moments of affection seem to significantly highlight women's happiness (~41%) more than moments of achievement do. Men's happiness seems to concentrate around achievement (36.68%), then affection (29%) then enjoying the moment and bonding (11.66% and 11.21% respectively). So what words did they frequently use to describe this?
+
+```{r womencloud, warning=FALSE, message=FALSE, echo=FALSE}
+#women
+words_women <-  women_data %>%
+  unnest_tokens(word, text)
+word_count_women <- words_women %>%
+  count(word, sort = TRUE)
+plot_women_words <- ggplot(head(word_count_women,20), aes(x=reorder(word,n), y=n)) +
+  geom_bar(stat="identity") +
+  labs(x="Words", y="Counts", title="Most Frequent Terms for Women")+
+  coord_flip() 
+```
+
+```{r mencloud, warning=FALSE, message=FALSE, echo=FALSE}
+#men
+bag_of_words_men <-  men_data %>%
+  unnest_tokens(word, text)
+word_count_men <- bag_of_words_men %>%
+  count(word, sort = TRUE)
+plot_men_words <- ggplot(head(word_count_men,20), aes(x=reorder(word,n), y=n)) +
+  geom_bar(stat="identity") +
+  labs(x="Words", y="Counts", title="Most Frequent Terms for Men")+
+  coord_flip() 
+
+```
+
+```{r gender frequent terms grid, warning=FALSE, message=FALSE, echo=FALSE}
+grid.arrange(plot_women_words,plot_men_words, nrow=1,ncol=2)
+```
+
+The previously demonstrated disparities suggest that men and women have their own relative perspective of happiness. Men are driven by accomplishments more than affection, as opposed to women. Nevertheless, is this true for all women and men? Later in the analysis, we will get to discover more, but for now let's explore the marital status of the individuals in our data.
+
+##3. Marital Status:##
+```{r marital data, warning=FALSE, message=FALSE, echo=FALSE}
+#how many marital status
+marital_status <- unique(mydata$marital)
+
+#is there a better way to aggregate than just doing this 
+single <- mydata[mydata$marital=="single",] 
+df_single <- count(single, predicted_categories=single$predicted_category)
+df_single$percent <- round((df_single$n/sum(df_single$n))*100,2)
+
+p_single <- ggplot(df_single, aes(predicted_categories, percent)) +
+  geom_histogram(stat = "identity") +
+  labs(x="happiness categories", y="frequency (%)", title="Single People") +
+  scale_y_continuous(limits=c(0,100), breaks = seq(0,100,5)) +
+  geom_text(aes(x=predicted_categories, y=df_single$percent, label=df_single$percent, pos=2, vjust=-1))
+#achievement is most important
+
+########
+married <- mydata[mydata$marital=="married",]
+df_married <- count(married, predicted_categories=married$predicted_category)
+df_married$percent <- round((df_married$n/sum(df_married$n))*100,2)
+
+p_married <- ggplot(df_married, aes(predicted_categories, percent)) +
+  geom_histogram(stat = "identity") +
+  labs(x="happiness categories", y="frequency (%)", title="Marrried People") +
+  scale_y_continuous(limits=c(0,100), breaks = seq(0,100,5)) +
+  geom_text(aes(x=predicted_categories, y=df_married$percent, label=df_married$percent, pos=2, vjust=-1)) 
+
+########  
+divorced <- mydata[mydata$marital=="divorced",] 
+df_divorc <- count(divorced, predicted_categories=divorced$predicted_category)
+df_divorc$percent <- round((df_divorc$n/sum(df_divorc$n))*100,2)
+
+p_divorced <- ggplot(df_divorc, aes(predicted_categories, percent)) +
+  geom_histogram(stat = "identity") +
+  labs(x="happiness categories", y="frequency (%)", title="Divorced People") +
+  scale_y_continuous(limits=c(0,100), breaks = seq(0,100,5)) +
+  geom_text(aes(x=predicted_categories, y=df_divorc$percent, label=df_divorc$percent, pos=2, vjust=-1))
+
+########
+separated <- mydata[mydata$marital=="separated",] 
+df_sep <- count(separated, predicted_categories=separated$predicted_category)
+df_sep$percent <- round((df_sep$n/sum(df_sep$n))*100,2)
+
+p_sep <- ggplot(df_sep, aes(predicted_categories, percent)) +
+  geom_histogram(stat = "identity") +
+  labs(x="happines categories", y="frequency(%)", title="Separated People") +
+  scale_y_continuous(limits=c(0,100), breaks = seq(0,100,5)) +
+  geom_text(aes(x=predicted_categories, y=df_sep$percent, label=df_sep$percent, pos=2, vjust=-1)) 
+
+######
+widowed <- mydata[mydata$marital=="widowed",] 
+df_widow <- count(widowed, predicted_categories=widowed$predicted_category)
+df_widow$percent <- round((df_widow$n/sum(df_widow$n))*100,2)
+
+p_widow <- ggplot(df_widow, aes(predicted_categories, percent)) +
+  geom_histogram(stat = "identity") +
+  labs(x="happiness categories", y="frequency", title="Widowed People") +
+  scale_y_continuous(limits=c(0,100), breaks = seq(0,100,5)) +
+  geom_text(aes(x=predicted_categories, y=df_widow$percent, label=df_widow$percent, pos=2, vjust=-1)) +
+  theme(text=element_text(size=9), axis.text.x = element_text(angle = 90, hjust = 1))
+```
+
+```{r marital grid, warning=FALSE, message=FALSE, echo=FALSE}
+grid.arrange(p_single,p_married,ncol=2)
+grid.arrange(p_divorced,p_sep,ncol=2)
+```
+
+Overall, affection and achievement followed by bonding and living the moment seem to define people's happiness. Yet, again, can we generalize this and make it true to everyone? To answer this, I will now consider a combination of factors: age, gender, marital status, and parenthood.
+
+##4. Personas:##
+Let's consider two different profiles for both women and men: the profiles are of same age but one is single with no children and the other is a married mother. I would like to see what dominantly defines affection for each of these profiles to see if marital status and having children has any impact in altering one's perspective of happiness.
+
+```{r parenthood data, warninΩg=FALSE, message=FALSE,echo=FALSE, echo=FALSE}
+
+#single adult women 
+single_young_adult_women <- 
+  filter(young_adult,gender=="f" & marital=="single" & parenthood=="n")
+
+#Married Adult Mom
+
+married_young_adult_mom <-
+  filter(young_adult,gender=="f" & marital=="married" & parenthood=="y")
+
+#Single Adult Men
+single_young_adult_men <- 
+  filter(young_adult, gender=="m" & marital=="single" & parenthood=="n")
+
+#Married Adult Father
+
+married_young_adult_father <- 
+  filter(young_adult, gender=="m" & marital=="married" & parenthood=="y")
+```
+
+```{r parenthood first plot,  warning=FALSE, message=FALSE, echo=FALSE}
+#plots
+affection_data_single_women <- single_young_adult_women[which(single_young_adult_women$predicted_category=="affection"),]
+bag_of_words_affection_single_women <-  affection_data_single_women %>%
+  unnest_tokens(word, text)
+
+word_count_affection_single_women <- bag_of_words_affection_single_women %>%
+  count(word, sort = TRUE)
+single_women <- ggplot(head(word_count_affection_single_women,20), aes(x=reorder(word,n), y=n)) +
+  geom_bar(stat="identity") +
+  labs(x="Words", y="Counts", title="Single Adult Women (25-40)") +
+  coord_flip()
+##
+affection_data_married_mom <- married_young_adult_mom[which(married_young_adult_mom$predicted_category=="affection"),]
+bag_of_words_affection_married_mom <-  affection_data_married_mom %>%
+  unnest_tokens(word, text)
+
+word_count_affection_married_mom <- bag_of_words_affection_married_mom %>%
+  count(word, sort = TRUE)
+married_mom <- ggplot(head(word_count_affection_married_mom,20), aes(x=reorder(word,n), y=n)) +
+  geom_bar(stat="identity") +
+  labs(x="Words", y="Counts", title="Married Adult Moms (25-40)") +
+  coord_flip()
+
+##
+affection_data_single_men <- single_young_adult_men[which(single_young_adult_men$predicted_category=="affection"),]
+bag_of_words_affection_single_men <-  affection_data_single_men %>%
+  unnest_tokens(word, text)
+
+word_count_affection_single_men <- bag_of_words_affection_single_men %>%
+  count(word, sort = TRUE)
+single_men <- ggplot(head(word_count_affection_single_men,20), aes(x=reorder(word,n), y=n)) +
+  geom_bar(stat="identity") +
+  labs(x="Words", y="Counts", title="Single Adult Men (25-40)") +
+  coord_flip()
+
+##
+affection_data_married_father <- married_young_adult_father[which(married_young_adult_father$predicted_category=="affection"),]
+bag_of_words_affection_married_father <-  affection_data_married_father %>%
+  unnest_tokens(word, text)
+
+word_count_affection_married_father <- bag_of_words_affection_married_father %>%
+  count(word, sort = TRUE)
+married_father <- ggplot(head(word_count_affection_married_father,20), aes(x=reorder(word,n), y=n)) +
+  geom_bar(stat="identity") +
+  labs(x="Words", y="Counts", title="Married Adult Father (25-40)") +
+  coord_flip()
+
+grid.arrange(single_women,married_mom, ncol=2) 
+#word frequency for single vs married women
+grid.arrange(single_men,married_father, ncol=2) 
+```
+
+It is interesting to see how children and the significant other (husband) represent a big part of a married mother's happy affection moments. On the other hand, single adult women's happiness are dominantly defined by their significant other (boyfriend), family and pets. The same applies for the comparison between single adult men and married adult fathers, i.e gender does not make much difference in this situation.
+
+```{r parenthood second plot, warning=FALSE, message=FALSE, echo=FALSE }
+freq_single_women <- count(single_young_adult_women, predicted_categories=single_young_adult_women$predicted_category)
+freq_single_women$percent <- round((freq_single_women$n/sum(freq_single_women$n))*100, 2)
+
+p_single_women <- ggplot(freq_single_women, aes(predicted_categories, percent)) +
+  geom_histogram(stat = "identity", fill="pink", color="pink") +
+  labs(x="happiness categories", y="frequency (%)", title="Single Adult Women With No Children (24-40)") +
+  scale_y_continuous(limits=c(0,100), breaks = seq(0,100,5)) + 
+  geom_text(aes(x=predicted_categories, y=freq_single_women$percent, label=freq_single_women$percent, pos=2, vjust=-0.5)) +
+  theme(text=element_text(size=7), axis.text.x = element_text(angle = 90, hjust = 1))
+
+freq_single_men <- count(single_young_adult_men, predicted_categories=single_young_adult_men$predicted_category)
+freq_single_men$percent <- round((freq_single_men$n/sum(freq_single_men$n))*100, 2)
+
+p_single_men <- ggplot(freq_single_men, aes(predicted_categories, percent)) +
+  geom_histogram(stat = "identity", fill="blue", color="blue") +
+  labs(x="happiness categories", y="frequency (%)", title="Single Adult Men With No Children (24-40)") +
+  scale_y_continuous(limits=c(0,100), breaks = seq(0,100,5)) + 
+  geom_text(aes(x=predicted_categories, y=freq_single_men$percent, label=freq_single_men$percent, pos=2, vjust=-0.5)) +
+  theme(text=element_text(size=7), axis.text.x = element_text(angle = 90, hjust = 1))
+
+grid.arrange(p_single_women,p_single_men, ncol=2)
+
+```
+
+These two graphs showcase to us that a combination of a parenthood status, marital status, age and gender matter in defining happiness categories. Single adult individuals with no children are more likely to find happiness in their accomplishments, than in affection. Whereas married adult individuals with kids find their happiness highlighted by affection essentially moments with their children and spouses.
+
+#Summary#
+As you grow in age, perspectives in life change and so does your definition of happiness.
+Children are a source of joy to mothers same as fathers. Affection is the highlight of married adult individuals. And if you are a single adult woman or man, you're most likely going to find your happiness in your achievement, but you will also find it in affection and essentially with a significant other or family. Ultimately, gender does not alter the perception of happiness necessarily, as we've seen both men and women  define their happiness almost similarly under similar life situations (parenthood, marital status, etc.).
+
+So in which category are you? What makes YOU happy?
+
+#References#
+1. https://github.com/rit-public/HappyDB
