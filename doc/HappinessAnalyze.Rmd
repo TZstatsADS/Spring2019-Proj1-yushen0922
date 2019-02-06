@@ -26,14 +26,10 @@ library(wordcloud)
 
 ```{r read data, warning=FALSE, message=FALSE, echo=FALSE}
 processed_data <- read_csv("/Users/apple/Documents/GitHub/Spring2019-Proj1-yushen0922/output/processed_moments.csv")
-head(processed_data)
-names(processed_data)
 ```
 
 ```{r read demo data, warning=FALSE, message=FALSE, echo=FALSE}
 demogra_data <- read_csv("/Users/apple/Documents/GitHub/Spring2019-Proj1-yushen0922/data/demographic.csv") ## import demographic data
-
-head(demogra_data)
 ```
 
 ```{r uplodaing data, warning=FALSE, message=FALSE, echo=FALSE}
@@ -51,7 +47,6 @@ mydata <- processed_data %>%
          ground_truth_category, 
          predicted_category, 
          text) ## merge and select 
-head(mydata)
 ```
 
 ```{r cleaning data, warning=FALSE, message=FALSE, echo=FALSE}
