@@ -210,6 +210,7 @@ p_senior <- ggplot(freq_senior, aes(predicted_categories, percent)) +
   geom_text(aes(x=predicted_categories, y=freq_senior$percent, label=freq_senior$percent, vjust=-1)) 
 ```
 
+
 So let's see how much of importance does each of the happiness categories have in the lives of our aformentioned age groups:
 ```{r age grid, warning=FALSE, message=FALSE, echo=FALSE}
 grid.arrange(p_early_adult,p_young_adult,p_adult,p_senior,ncol=2)
@@ -252,7 +253,7 @@ We can see that the happiness stemming from accomplishment for adults between 20
 Next Step is analyze genders and see if one has a different say from the other as regards moments of happiness.
 
 ##2. Gender:##
-In this regard, I will study the two prominent genders in the data: female and male (I will use women and men as labels)
+In this regard, I will study the two prominent genders in the data: female and male.
 ```{r women, warning=FALSE, message=FALSE, echo=FALSE}
 #what categories are most women happy with
 women_data <- mydata[mydata$gender=="f",]
