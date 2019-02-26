@@ -253,7 +253,7 @@ We can see that the happiness stemming from accomplishment for adults between 20
 Next Step is analyze genders and see if one has a different say from the other as regards moments of happiness.
 
 ##2. Gender:##
-In this regard, I will study the two prominent genders in the data: female and male.
+
 ```{r women, warning=FALSE, message=FALSE, echo=FALSE}
 #what categories are most women happy with
 women_data <- mydata[mydata$gender=="f",]
